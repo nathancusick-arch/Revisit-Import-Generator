@@ -105,9 +105,11 @@ result_filter = st.selectbox(
 
 # ---- Visit Info (inside Settings) ----
 
+st.markdown("**Visit Info (Optional)**")
+
 if not st.session_state.get("visit_info_toggle", False):
     st.session_state.visit_info_text = st.text_area(
-        "Visit Info (Optional)",
+        label="",
         value=st.session_state.visit_info_text
     )
 else:
