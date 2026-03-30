@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import zipfile
 
 st.set_page_config(page_title="Revisit Import Generator")
 
@@ -21,7 +22,6 @@ def load_audit_file(file):
     return pd.read_csv(file)
 
 def load_store_file(file):
-    # Read without headers first
     if file.name.endswith(".csv"):
         raw_df = pd.read_csv(file, header=None)
     else:
@@ -29,7 +29,6 @@ def load_store_file(file):
 
     required_headers = ["Site Internal ID", "Pass Email", "Fail Email", "Abort Email"]
 
-    # Search first 5 rows for header row
     for i in range(5):
         row_values = raw_df.iloc[i].astype(str).tolist()
 
@@ -91,6 +90,8 @@ split_option = st.selectbox(
 
 visit_info = st.text_area("Visit Info (Optional)")
 
+download_zip = st.toggle("Download all files as a ZIP", value=False)
+
 # =========================
 # Generate Section
 # =========================
@@ -99,10 +100,8 @@ st.header("3. Generate")
 
 if st.button("Generate Imports"):
 
-    # Reset previous outputs
     st.session_state.generated_files = None
 
-    # Validate inputs
     if not audit_file or not store_file:
         st.error("Please upload both Audit Export and Store Database.")
         st.stop()
@@ -115,10 +114,6 @@ if st.button("Generate Imports"):
         st.error(f"Error loading files: {e}")
         st.stop()
 
-    # =========================
-    # Validate Columns
-    # =========================
-
     required_audit_cols = ["site_internal_id", "primary_result", split_option, "client_name"]
 
     for col in required_audit_cols:
@@ -126,19 +121,11 @@ if st.button("Generate Imports"):
             st.error(f"Missing column in audit export: {col}")
             st.stop()
 
-    # =========================
-    # Filter Fails
-    # =========================
-
     audit_df = audit_df[normalise_fail(audit_df["primary_result"])]
 
     if audit_df.empty:
         st.warning("No failed audits found.")
         st.stop()
-
-    # =========================
-    # Exclude Existing Revisits
-    # =========================
 
     if revisit_df is not None:
         required_revisit_cols = ["site_internal_id", "item_to_order"]
@@ -164,20 +151,12 @@ if st.button("Generate Imports"):
         st.warning("No audits remaining after exclusions.")
         st.stop()
 
-    # =========================
-    # Merge Store DB
-    # =========================
-
     merged_df = audit_df.merge(
         store_df,
         left_on="site_internal_id",
         right_on="Site Internal ID",
         how="left"
     )
-
-    # =========================
-    # Validation - Missing Sites
-    # =========================
 
     missing_sites = merged_df[merged_df["Site Internal ID"].isna()]["site_internal_id"].unique()
 
@@ -186,17 +165,9 @@ if st.button("Generate Imports"):
         st.write(list(missing_sites))
         st.stop()
 
-    # =========================
-    # Client Name
-    # =========================
-
     client_name = clean_filename(
         audit_df["client_name"].dropna().iloc[0]
     )
-
-    # =========================
-    # Generate Files
-    # =========================
 
     files = {}
 
@@ -227,19 +198,33 @@ if st.button("Generate Imports"):
         st.session_state.generated_files = files
 
 # =========================
-# Output Section (Persistent)
+# Output Section
 # =========================
 
 if st.session_state.generated_files:
 
     st.success(f"{len(st.session_state.generated_files)} import file(s) generated.")
 
-    st.subheader("Downloads")
+    if download_zip:
+        zip_buffer = io.BytesIO()
 
-    for filename, filedata in st.session_state.generated_files.items():
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            for filename, filedata in st.session_state.generated_files.items():
+                zf.writestr(filename, filedata)
+
         st.download_button(
-            label=f"Download {filename}",
-            data=filedata,
-            file_name=filename,
-            mime="text/csv"
+            label="Download All as ZIP",
+            data=zip_buffer.getvalue(),
+            file_name="revisit_imports.zip",
+            mime="application/zip"
         )
+    else:
+        st.subheader("Downloads")
+
+        for filename, filedata in st.session_state.generated_files.items():
+            st.download_button(
+                label=f"Download {filename}",
+                data=filedata,
+                file_name=filename,
+                mime="text/csv"
+            )
