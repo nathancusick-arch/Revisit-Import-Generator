@@ -17,6 +17,9 @@ if "generated_files" not in st.session_state:
 if "visit_info_text" not in st.session_state:
     st.session_state.visit_info_text = ""
 
+if "visit_info_toggle" not in st.session_state:
+    st.session_state.visit_info_toggle = False
+
 # =========================
 # Helpers
 # =========================
@@ -103,9 +106,9 @@ result_filter = st.selectbox(
     ["Fails Only", "Aborts Only", "Fails and Aborts"]
 )
 
-# ---- Visit Info (inside Settings) ----
+# ---- Visit Info ----
 
-if not st.session_state.get("visit_info_toggle", False):
+if not st.session_state.visit_info_toggle:
     st.session_state.visit_info_text = st.text_area(
         "Visit Info (Optional)",
         value=st.session_state.visit_info_text
@@ -119,10 +122,9 @@ else:
 """
     )
 
-visit_info_toggle = st.toggle(
+st.session_state.visit_info_toggle = st.toggle(
     "Take Visit Info from Store DB",
-    value=st.session_state.get("visit_info_toggle", False),
-    key="visit_info_toggle"
+    value=st.session_state.visit_info_toggle
 )
 
 # =========================
@@ -204,7 +206,7 @@ if st.button("Generate Imports"):
         st.write(list(missing_sites))
         st.stop()
 
-    if visit_info_toggle and "Visit Info" not in merged_df.columns:
+    if st.session_state.visit_info_toggle and "Visit Info" not in merged_df.columns:
         st.error("Store DB must include a 'Visit Info' column when toggle is enabled.")
         st.stop()
 
@@ -217,18 +219,20 @@ if st.button("Generate Imports"):
 
     for group_value, group_df in merged_df.groupby(split_option):
 
-        if visit_info_toggle:
-            visit_info_col = group_df["Visit Info"]
-        else:
-            visit_info_col = st.session_state.visit_info_text
-
-        output_df = pd.DataFrame({
+        output_data = {
             "site_internal_id": group_df["site_internal_id"],
-            "visit_info": visit_info_col,
             "report_PASS_full": group_df["Pass Email"],
             "report_FAIL_full": group_df["Fail Email"],
             "report_ABORT_full": group_df["Abort Email"]
-        })
+        }
+
+        # Visit Info logic
+        if st.session_state.visit_info_toggle:
+            output_data["visit_info"] = group_df["Visit Info"]
+        elif st.session_state.visit_info_text.strip() != "":
+            output_data["visit_info"] = st.session_state.visit_info_text
+
+        output_df = pd.DataFrame(output_data)
 
         if output_df.empty:
             continue
