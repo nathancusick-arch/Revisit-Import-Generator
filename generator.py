@@ -103,16 +103,14 @@ result_filter = st.selectbox(
     ["Fails Only", "Aborts Only", "Fails and Aborts"]
 )
 
-# =========================
-# Visit Info Section
-# =========================
+# ---- Visit Info (inside Settings) ----
 
-st.subheader("Visit Info")
-
-visit_info_toggle = st.toggle("Take Visit Info from Store DB", value=False)
-
-# Show help OR textbox ABOVE toggle
-if visit_info_toggle:
+if not st.session_state.get("visit_info_toggle", False):
+    st.session_state.visit_info_text = st.text_area(
+        "Visit Info (Optional)",
+        value=st.session_state.visit_info_text
+    )
+else:
     st.info(
         """
 **Store DB requirement for Visit Info:**
@@ -120,11 +118,12 @@ if visit_info_toggle:
 - Must include a column header named **Visit Info**
 """
     )
-else:
-    st.session_state.visit_info_text = st.text_area(
-        "Visit Info (Optional)",
-        value=st.session_state.visit_info_text
-    )
+
+visit_info_toggle = st.toggle(
+    "Take Visit Info from Store DB",
+    value=st.session_state.get("visit_info_toggle", False),
+    key="visit_info_toggle"
+)
 
 # =========================
 # Generate Section
