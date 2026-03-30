@@ -233,6 +233,9 @@ if st.button("Generate Imports"):
         audit_df["client_name"].dropna().iloc[0]
     )
 
+    total_split_groups = merged_df[split_option].nunique()
+    total_countries = merged_df["country"].nunique()
+    
     # Generate Files
     files = {}
 
@@ -260,10 +263,24 @@ if st.button("Generate Imports"):
             if output_df.empty:
                 continue
 
-            suffix = f"_{'UK' if country == 'GB' else 'IE'}" if countries_in_group > 1 else ""
+            country_label = "UK" if country == "GB" else "IE"
 
-            filename = f"import_{clean_filename(group_value)}{suffix}_{client_name}.csv"
-
+            # Determine naming components
+            include_split = total_split_groups > 1
+            include_country = total_countries > 1
+            
+            name_parts = ["import"]
+            
+            if include_split:
+                name_parts.append(clean_filename(group_value))
+            
+            if include_country:
+                name_parts.append(country_label)
+            
+            name_parts.append(client_name)
+            
+            filename = "_".join(name_parts) + ".csv"
+            
             csv_buffer = io.StringIO()
             output_df.to_csv(csv_buffer, index=False)
 
