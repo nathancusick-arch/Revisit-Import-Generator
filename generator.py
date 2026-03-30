@@ -124,6 +124,12 @@ else:
 """
     )
 
+st.markdown("")
+st.toggle(
+    "Take Visit Info from Store DB",
+    key="visit_info_toggle"
+)
+
 # =========================
 # Generate Section
 # =========================
