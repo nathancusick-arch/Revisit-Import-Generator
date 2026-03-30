@@ -14,6 +14,9 @@ st.title("Revisit Import Generator")
 if "generated_files" not in st.session_state:
     st.session_state.generated_files = None
 
+if "visit_info_text" not in st.session_state:
+    st.session_state.visit_info_text = ""
+
 # =========================
 # Helpers
 # =========================
@@ -104,11 +107,16 @@ result_filter = st.selectbox(
 # Visit Info Section
 # =========================
 
+st.subheader("Visit Info")
+
+visit_info_input = st.text_area(
+    "Visit Info (Optional)",
+    key="visit_info_text"
+)
+
 visit_info_toggle = st.toggle("Take Visit Info from Store DB", value=False)
 
-if not visit_info_toggle:
-    visit_info = st.text_area("Visit Info (Optional)")
-else:
+if visit_info_toggle:
     st.info(
         """
 **Store DB requirement for Visit Info:**
@@ -116,19 +124,14 @@ else:
 - Must include a column header named **Visit Info**
 """
     )
-    visit_info = None  # ignored
-
-# =========================
-# Download Option
-# =========================
-
-download_zip = st.toggle("Download all files as a ZIP", value=False)
 
 # =========================
 # Generate Section
 # =========================
 
 st.header("3. Generate")
+
+download_zip = st.toggle("Download all files as a ZIP", value=False)
 
 if st.button("Generate Imports"):
 
@@ -217,10 +220,6 @@ if st.button("Generate Imports"):
         st.error("Store DB must include a 'Visit Info' column when toggle is enabled.")
         st.stop()
 
-    # =========================
-    # Client Name
-    # =========================
-
     client_name = clean_filename(
         audit_df["client_name"].dropna().iloc[0]
     )
@@ -236,7 +235,7 @@ if st.button("Generate Imports"):
         if visit_info_toggle:
             visit_info_col = group_df["Visit Info"]
         else:
-            visit_info_col = visit_info
+            visit_info_col = st.session_state.visit_info_text
 
         output_df = pd.DataFrame({
             "site_internal_id": group_df["site_internal_id"],
