@@ -7,6 +7,16 @@ st.set_page_config(page_title="Revisit Import Generator", layout="wide")
 st.title("Revisit Import Generator")
 
 # =========================
+# Session State Init
+# =========================
+
+if "generated_files" not in st.session_state:
+    st.session_state.generated_files = None
+
+if "file_summary" not in st.session_state:
+    st.session_state.file_summary = None
+
+# =========================
 # Helpers
 # =========================
 
@@ -21,15 +31,23 @@ def load_file(file):
 def normalise_fail(series):
     return series.astype(str).str.lower().str.contains("fail", na=False)
 
+def clean_filename(value):
+    return str(value).replace(" ", "_").replace("/", "_")
+
 # =========================
 # Upload Section
 # =========================
 
 st.header("1. Upload Files")
 
-audit_file = st.file_uploader("Upload Audit Export (.csv)", type=["csv"])
-store_file = st.file_uploader("Upload Store Database (.csv, .xlsx, .xlsm)", type=["csv", "xlsx", "xlsm"])
-revisit_file = st.file_uploader("Upload Existing Revisits (Optional)", type=["csv"])
+col1, col2 = st.columns(2)
+
+with col1:
+    audit_file = st.file_uploader("Audit Export (.csv)", type=["csv"])
+    store_file = st.file_uploader("Store Database (.csv, .xlsx, .xlsm)", type=["csv", "xlsx", "xlsm"])
+
+with col2:
+    revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
 # =========================
 # Settings
@@ -37,21 +55,30 @@ revisit_file = st.file_uploader("Upload Existing Revisits (Optional)", type=["cs
 
 st.header("2. Settings")
 
-split_option = st.selectbox(
-    "Split Imports By",
-    ["item_to_order", "order_internal_id"]
-)
+col3, col4 = st.columns(2)
 
-visit_info = st.text_area("Visit Info (Optional)")
+with col3:
+    split_option = st.selectbox(
+        "Split Imports By",
+        ["item_to_order", "order_internal_id"]
+    )
+
+with col4:
+    visit_info = st.text_area("Visit Info (Optional)")
 
 # =========================
-# Generate
+# Generate Section
 # =========================
 
 st.header("3. Generate")
 
 if st.button("Generate Imports"):
 
+    # Reset previous outputs
+    st.session_state.generated_files = None
+    st.session_state.file_summary = None
+
+    # Validate inputs
     if not audit_file or not store_file:
         st.error("Please upload both Audit Export and Store Database.")
         st.stop()
@@ -59,17 +86,13 @@ if st.button("Generate Imports"):
     try:
         audit_df = load_file(audit_file)
         store_df = load_file(store_file)
-
-        revisit_df = None
-        if revisit_file:
-            revisit_df = load_file(revisit_file)
-
+        revisit_df = load_file(revisit_file) if revisit_file else None
     except Exception as e:
         st.error(f"Error loading files: {e}")
         st.stop()
 
     # =========================
-    # Validate Required Columns
+    # Validate Columns
     # =========================
 
     required_audit_cols = ["site_internal_id", "primary_result", split_option, "client_name"]
@@ -107,9 +130,10 @@ if st.button("Generate Imports"):
                 st.error(f"Missing column in revisits file: {col}")
                 st.stop()
 
-        revisit_keys = set(
-            zip(revisit_df["site_internal_id"], revisit_df["item_to_order"])
-        )
+        revisit_keys = set(zip(
+            revisit_df["site_internal_id"],
+            revisit_df["item_to_order"]
+        ))
 
         audit_df = audit_df[
             ~audit_df.apply(
@@ -123,7 +147,7 @@ if st.button("Generate Imports"):
         st.stop()
 
     # =========================
-    # Join Store DB
+    # Merge Store DB
     # =========================
 
     merged_df = audit_df.merge(
@@ -145,34 +169,23 @@ if st.button("Generate Imports"):
         st.stop()
 
     # =========================
-    # Build Output Columns
+    # Client Name
     # =========================
 
-    merged_df["visit_info"] = visit_info
-
-    output_df = pd.DataFrame({
-        "site_internal_id": merged_df["site_internal_id"],
-        "visit_info": merged_df["visit_info"],
-        "report_PASS_full": merged_df["Pass Email"],
-        "report_FAIL_full": merged_df["Fail Email"],
-        "report_ABORT_full": merged_df["Abort Email"]
-    })
+    client_name = clean_filename(
+        audit_df["client_name"].dropna().iloc[0]
+    )
 
     # =========================
-    # Get Client Name
-    # =========================
-
-    client_name = str(audit_df["client_name"].dropna().iloc[0]).replace(" ", "_")
-
-    # =========================
-    # Split and Generate Files
+    # Generate Files
     # =========================
 
     files = {}
+    summary = []
 
     for group_value, group_df in merged_df.groupby(split_option):
 
-        group_output = pd.DataFrame({
+        output_df = pd.DataFrame({
             "site_internal_id": group_df["site_internal_id"],
             "visit_info": visit_info,
             "report_PASS_full": group_df["Pass Email"],
@@ -180,27 +193,39 @@ if st.button("Generate Imports"):
             "report_ABORT_full": group_df["Abort Email"]
         })
 
-        if group_output.empty:
+        if output_df.empty:
             continue
 
-        filename = f"import_{str(group_value).replace(' ', '_')}_{client_name}.csv"
+        clean_group = clean_filename(group_value)
+        filename = f"import_{clean_group}_{client_name}.csv"
 
         csv_buffer = io.StringIO()
-        group_output.to_csv(csv_buffer, index=False)
+        output_df.to_csv(csv_buffer, index=False)
 
         files[filename] = csv_buffer.getvalue()
-
-    # =========================
-    # Output Downloads
-    # =========================
+        summary.append((filename, len(output_df)))
 
     if not files:
         st.warning("No files were generated.")
-        st.stop()
+    else:
+        st.session_state.generated_files = files
+        st.session_state.file_summary = summary
 
-    st.success(f"{len(files)} import file(s) generated.")
+# =========================
+# Output Section (Persistent)
+# =========================
 
-    for filename, filedata in files.items():
+if st.session_state.generated_files:
+
+    st.success(f"{len(st.session_state.generated_files)} import file(s) generated.")
+
+    st.subheader("File Summary")
+    for filename, row_count in st.session_state.file_summary:
+        st.write(f"{filename} — {row_count} rows")
+
+    st.subheader("Downloads")
+
+    for filename, filedata in st.session_state.generated_files.items():
         st.download_button(
             label=f"Download {filename}",
             data=filedata,
