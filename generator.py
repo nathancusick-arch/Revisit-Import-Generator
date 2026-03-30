@@ -67,10 +67,13 @@ store_file = st.file_uploader(
 )
 
 st.info(
-    "Store DB requirements:\n\n"
-    "• Must include a column header named **Site Internal ID**\n"
-    "• Must include column headers named **Pass Email**, **Fail Email**, and **Abort Email**\n"
-    "• These headers can appear anywhere within the first 5 rows of the file"
+    """
+**Store DB requirements:**
+
+- Must include a column header named **Site Internal ID**
+- Must include column headers named **Pass Email**, **Fail Email**, and **Abort Email**
+- These headers can appear anywhere within the first 5 rows of the file
+"""
 )
 
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
