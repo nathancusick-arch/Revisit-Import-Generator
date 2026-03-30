@@ -40,8 +40,8 @@ def load_store_file(file):
             return df
 
     raise ValueError(
-        "Could not find required headers in first 5 rows. "
-        "Ensure columns include: Site Internal ID, Pass Email, Fail Email, Abort Email."
+        "Could not find required column headers in the first 5 rows. "
+        "Ensure the file includes: Site Internal ID, Pass Email, Fail Email, Abort Email."
     )
 
 def load_revisit_file(file):
@@ -63,15 +63,14 @@ audit_file = st.file_uploader("Audit Export (.csv)", type=["csv"])
 
 store_file = st.file_uploader(
     "Store Database (.csv, .xlsx, .xlsm)",
-    type=["csv", "xlsx", "xlsm"],
-    help=(
-        "Store DB must contain columns named exactly:\n"
-        "- Site Internal ID\n"
-        "- Pass Email\n"
-        "- Fail Email\n"
-        "- Abort Email\n\n"
-        "These headers can appear anywhere within the first 5 rows."
-    )
+    type=["csv", "xlsx", "xlsm"]
+)
+
+st.info(
+    "Store DB requirements:\n\n"
+    "• Must include a column header named **Site Internal ID**\n"
+    "• Must include column headers named **Pass Email**, **Fail Email**, and **Abort Email**\n"
+    "• These headers can appear anywhere within the first 5 rows of the file"
 )
 
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
