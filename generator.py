@@ -17,13 +17,35 @@ if "generated_files" not in st.session_state:
 # Helpers
 # =========================
 
-def load_file(file):
+def load_audit_file(file):
+    return pd.read_csv(file)
+
+def load_store_file(file):
+    # Read without headers first
     if file.name.endswith(".csv"):
-        return pd.read_csv(file)
-    elif file.name.endswith(".xlsx") or file.name.endswith(".xlsm"):
-        return pd.read_excel(file)
+        raw_df = pd.read_csv(file, header=None)
     else:
-        raise ValueError("Unsupported file type")
+        raw_df = pd.read_excel(file, header=None)
+
+    required_headers = ["Site Internal ID", "Pass Email", "Fail Email", "Abort Email"]
+
+    # Search first 5 rows for header row
+    for i in range(5):
+        row_values = raw_df.iloc[i].astype(str).tolist()
+
+        if all(header in row_values for header in required_headers):
+            df = raw_df.iloc[i+1:].copy()
+            df.columns = raw_df.iloc[i]
+            df = df.reset_index(drop=True)
+            return df
+
+    raise ValueError(
+        "Could not find required headers in first 5 rows. "
+        "Ensure columns include: Site Internal ID, Pass Email, Fail Email, Abort Email."
+    )
+
+def load_revisit_file(file):
+    return pd.read_csv(file)
 
 def normalise_fail(series):
     return series.astype(str).str.lower().str.contains("fail", na=False)
@@ -38,7 +60,20 @@ def clean_filename(value):
 st.header("1. Upload Files")
 
 audit_file = st.file_uploader("Audit Export (.csv)", type=["csv"])
-store_file = st.file_uploader("Store Database (.csv, .xlsx, .xlsm)", type=["csv", "xlsx", "xlsm"])
+
+store_file = st.file_uploader(
+    "Store Database (.csv, .xlsx, .xlsm)",
+    type=["csv", "xlsx", "xlsm"],
+    help=(
+        "Store DB must contain columns named exactly:\n"
+        "- Site Internal ID\n"
+        "- Pass Email\n"
+        "- Fail Email\n"
+        "- Abort Email\n\n"
+        "These headers can appear anywhere within the first 5 rows."
+    )
+)
+
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
 # =========================
@@ -71,9 +106,9 @@ if st.button("Generate Imports"):
         st.stop()
 
     try:
-        audit_df = load_file(audit_file)
-        store_df = load_file(store_file)
-        revisit_df = load_file(revisit_file) if revisit_file else None
+        audit_df = load_audit_file(audit_file)
+        store_df = load_store_file(store_file)
+        revisit_df = load_revisit_file(revisit_file) if revisit_file else None
     except Exception as e:
         st.error(f"Error loading files: {e}")
         st.stop()
@@ -83,16 +118,10 @@ if st.button("Generate Imports"):
     # =========================
 
     required_audit_cols = ["site_internal_id", "primary_result", split_option, "client_name"]
-    required_store_cols = ["Site Internal ID", "Pass Email", "Fail Email", "Abort Email"]
 
     for col in required_audit_cols:
         if col not in audit_df.columns:
             st.error(f"Missing column in audit export: {col}")
-            st.stop()
-
-    for col in required_store_cols:
-        if col not in store_df.columns:
-            st.error(f"Missing column in store DB: {col}")
             st.stop()
 
     # =========================
