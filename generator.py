@@ -46,8 +46,15 @@ def load_store_file(file):
 def load_revisit_file(file):
     return pd.read_csv(file)
 
-def normalise_fail(series):
-    return series.astype(str).str.lower().str.contains("fail", na=False)
+def normalise_result(series, mode):
+    s = series.astype(str).str.lower()
+
+    if mode == "Fails Only":
+        return s.str.contains("fail", na=False)
+    elif mode == "Aborts Only":
+        return s.str.contains("abort", na=False)
+    elif mode == "Fails and Aborts":
+        return s.str.contains("fail", na=False) | s.str.contains("abort", na=False)
 
 def clean_filename(value):
     return str(value).replace(" ", "_").replace("/", "_")
@@ -88,6 +95,11 @@ split_option = st.selectbox(
     ["item_to_order", "order_internal_id"]
 )
 
+result_filter = st.selectbox(
+    "Revisit Type",
+    ["Fails Only", "Aborts Only", "Fails and Aborts"]
+)
+
 visit_info = st.text_area("Visit Info (Optional)")
 
 download_zip = st.toggle("Download all files as a ZIP", value=False)
@@ -121,11 +133,19 @@ if st.button("Generate Imports"):
             st.error(f"Missing column in audit export: {col}")
             st.stop()
 
-    audit_df = audit_df[normalise_fail(audit_df["primary_result"])]
+    # =========================
+    # Filter Based on Selection
+    # =========================
+
+    audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
 
     if audit_df.empty:
-        st.warning("No failed audits found.")
+        st.warning("No matching audits found based on selected filter.")
         st.stop()
+
+    # =========================
+    # Exclude Existing Revisits
+    # =========================
 
     if revisit_df is not None:
         required_revisit_cols = ["site_internal_id", "item_to_order"]
@@ -150,6 +170,10 @@ if st.button("Generate Imports"):
     if audit_df.empty:
         st.warning("No audits remaining after exclusions.")
         st.stop()
+
+    # =========================
+    # Merge Store DB
+    # =========================
 
     merged_df = audit_df.merge(
         store_df,
