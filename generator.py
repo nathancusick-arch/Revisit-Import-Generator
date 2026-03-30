@@ -65,10 +65,10 @@ def clean_filename(value):
 
 st.header("1. Upload Files")
 
-audit_file = st.file_uploader("Audit Export (.csv)", type=["csv"])
+audit_file = st.file_uploader("Audit Export", type=["csv"])
 
 store_file = st.file_uploader(
-    "Store Database (.csv, .xlsx, .xlsm)",
+    "Store Database",
     type=["csv", "xlsx", "xlsm"]
 )
 
@@ -96,11 +96,31 @@ split_option = st.selectbox(
 )
 
 result_filter = st.selectbox(
-    "Revisit Type",
+    "Revisits For",
     ["Fails Only", "Aborts Only", "Fails and Aborts"]
 )
 
-visit_info = st.text_area("Visit Info (Optional)")
+# =========================
+# Visit Info Section
+# =========================
+
+visit_info_toggle = st.toggle("Take Visit Info from Store DB", value=False)
+
+if not visit_info_toggle:
+    visit_info = st.text_area("Visit Info (Optional)")
+else:
+    st.info(
+        """
+**Store DB requirement for Visit Info:**
+
+- Must include a column header named **Visit Info**
+"""
+    )
+    visit_info = None  # ignored
+
+# =========================
+# Download Option
+# =========================
 
 download_zip = st.toggle("Download all files as a ZIP", value=False)
 
@@ -134,7 +154,7 @@ if st.button("Generate Imports"):
             st.stop()
 
     # =========================
-    # Filter Based on Selection
+    # Filter
     # =========================
 
     audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
@@ -144,7 +164,7 @@ if st.button("Generate Imports"):
         st.stop()
 
     # =========================
-    # Exclude Existing Revisits
+    # Exclusions
     # =========================
 
     if revisit_df is not None:
@@ -172,7 +192,7 @@ if st.button("Generate Imports"):
         st.stop()
 
     # =========================
-    # Merge Store DB
+    # Merge
     # =========================
 
     merged_df = audit_df.merge(
@@ -182,6 +202,10 @@ if st.button("Generate Imports"):
         how="left"
     )
 
+    # =========================
+    # Validation
+    # =========================
+
     missing_sites = merged_df[merged_df["Site Internal ID"].isna()]["site_internal_id"].unique()
 
     if len(missing_sites) > 0:
@@ -189,17 +213,34 @@ if st.button("Generate Imports"):
         st.write(list(missing_sites))
         st.stop()
 
+    if visit_info_toggle and "Visit Info" not in merged_df.columns:
+        st.error("Store DB must include a 'Visit Info' column when toggle is enabled.")
+        st.stop()
+
+    # =========================
+    # Client Name
+    # =========================
+
     client_name = clean_filename(
         audit_df["client_name"].dropna().iloc[0]
     )
+
+    # =========================
+    # Generate Files
+    # =========================
 
     files = {}
 
     for group_value, group_df in merged_df.groupby(split_option):
 
+        if visit_info_toggle:
+            visit_info_col = group_df["Visit Info"]
+        else:
+            visit_info_col = visit_info
+
         output_df = pd.DataFrame({
             "site_internal_id": group_df["site_internal_id"],
-            "visit_info": visit_info,
+            "visit_info": visit_info_col,
             "report_PASS_full": group_df["Pass Email"],
             "report_FAIL_full": group_df["Fail Email"],
             "report_ABORT_full": group_df["Abort Email"]
