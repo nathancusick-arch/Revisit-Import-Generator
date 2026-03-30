@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import zipfile
+import re
 
 st.set_page_config(page_title="Revisit Import Generator")
 
@@ -20,6 +21,21 @@ if "visit_info_text" not in st.session_state:
 # =========================
 # Helpers
 # =========================
+
+eircode_pattern = re.compile(r"^[A-Z]\d{2}\s?[A-Z0-9]{4}$")
+gb_postcode_pattern = re.compile(r"^(?!BT)[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$")
+
+def classify_country(postcode: str) -> str:
+    if not postcode or str(postcode).strip() == "":
+        return "IE"
+    pc = str(postcode).strip().upper().replace("  ", " ")
+    if pc.startswith("BT"):
+        return "IE"
+    if eircode_pattern.match(pc):
+        return "IE"
+    if gb_postcode_pattern.match(pc):
+        return "GB"
+    return "IE"
 
 def load_audit_file(file):
     return pd.read_csv(file)
@@ -42,8 +58,7 @@ def load_store_file(file):
             return df
 
     raise ValueError(
-        "Could not find required column headers in the first 5 rows. "
-        "Ensure the file includes: Site Internal ID, Pass Email, Fail Email, Abort Email."
+        "Could not find required column headers in the first 5 rows."
     )
 
 def load_revisit_file(file):
@@ -69,21 +84,15 @@ def clean_filename(value):
 st.header("1. Upload Files")
 
 audit_file = st.file_uploader("Audit Export", type=["csv"])
+store_file = st.file_uploader("Store Database", type=["csv", "xlsx", "xlsm"])
 
-store_file = st.file_uploader(
-    "Store Database",
-    type=["csv", "xlsx", "xlsm"]
-)
-
-st.info(
-    """
+st.info("""
 **Store DB requirements:**
 
-- Must include a column header named **Site Internal ID**
-- Must include column headers named **Pass Email**, **Fail Email**, and **Abort Email**
-- These headers can appear anywhere within the first 5 rows of the file
-"""
-)
+- Must include **Site Internal ID**
+- Must include **Pass Email, Fail Email, Abort Email**
+- Headers must be within first 5 rows
+""")
 
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
@@ -93,31 +102,21 @@ revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
 st.header("2. Settings")
 
-split_option = st.selectbox(
-    "Split Imports By",
-    ["item_to_order", "order_internal_id"]
-)
+split_option = st.selectbox("Split Imports By", ["item_to_order", "order_internal_id"])
 
 result_filter = st.selectbox(
     "Revisits For",
     ["Fails Only", "Aborts Only", "Fails and Aborts"]
 )
 
-# ---- Visit Info (inside Settings) ----
-
+# Visit Info
 if not st.session_state.get("visit_info_toggle", False):
     st.session_state.visit_info_text = st.text_area(
         "Visit Info (Optional)",
         value=st.session_state.visit_info_text
     )
 else:
-    st.info(
-        """
-**Store DB requirement for Visit Info:**
-
-- Must include a column header named **Visit Info**
-"""
-    )
+    st.info("Store DB must include a **Visit Info** column")
 
 visit_info_toggle = st.toggle(
     "Take Visit Info from Store DB",
@@ -126,7 +125,7 @@ visit_info_toggle = st.toggle(
 )
 
 # =========================
-# Generate Section
+# Generate
 # =========================
 
 st.header("3. Generate")
@@ -138,55 +137,25 @@ if st.button("Generate Imports"):
     st.session_state.generated_files = None
 
     if not audit_file or not store_file:
-        st.error("Please upload both Audit Export and Store Database.")
+        st.error("Upload required files.")
         st.stop()
 
-    try:
-        audit_df = load_audit_file(audit_file)
-        store_df = load_store_file(store_file)
-        revisit_df = load_revisit_file(revisit_file) if revisit_file else None
-    except Exception as e:
-        st.error(f"Error loading files: {e}")
-        st.stop()
+    audit_df = load_audit_file(audit_file)
+    store_df = load_store_file(store_file)
+    revisit_df = load_revisit_file(revisit_file) if revisit_file else None
 
-    required_audit_cols = ["site_internal_id", "primary_result", split_option, "client_name"]
+    required_cols = ["site_internal_id", "primary_result", split_option, "client_name", "site_post_code"]
 
-    for col in required_audit_cols:
+    for col in required_cols:
         if col not in audit_df.columns:
-            st.error(f"Missing column in audit export: {col}")
+            st.error(f"Missing column: {col}")
             st.stop()
 
     # Filter
     audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
 
-    if audit_df.empty:
-        st.warning("No matching audits found based on selected filter.")
-        st.stop()
-
-    # Exclusions
-    if revisit_df is not None:
-        required_revisit_cols = ["site_internal_id", "item_to_order"]
-
-        for col in required_revisit_cols:
-            if col not in revisit_df.columns:
-                st.error(f"Missing column in revisits file: {col}")
-                st.stop()
-
-        revisit_keys = set(zip(
-            revisit_df["site_internal_id"],
-            revisit_df["item_to_order"]
-        ))
-
-        audit_df = audit_df[
-            ~audit_df.apply(
-                lambda row: (row["site_internal_id"], row["item_to_order"]) in revisit_keys,
-                axis=1
-            )
-        ]
-
-    if audit_df.empty:
-        st.warning("No audits remaining after exclusions.")
-        st.stop()
+    # Classify country
+    audit_df["country"] = audit_df["site_post_code"].apply(classify_country)
 
     # Merge
     merged_df = audit_df.merge(
@@ -196,85 +165,59 @@ if st.button("Generate Imports"):
         how="left"
     )
 
-    # Validation
-    missing_sites = merged_df[merged_df["Site Internal ID"].isna()]["site_internal_id"].unique()
+    client_name = clean_filename(audit_df["client_name"].dropna().iloc[0])
 
-    if len(missing_sites) > 0:
-        st.error("The following site IDs are missing from the Store DB:")
-        st.write(list(missing_sites))
-        st.stop()
-
-    if visit_info_toggle and "Visit Info" not in merged_df.columns:
-        st.error("Store DB must include a 'Visit Info' column when toggle is enabled.")
-        st.stop()
-
-    client_name = clean_filename(
-        audit_df["client_name"].dropna().iloc[0]
-    )
-
-    # Generate Files
     files = {}
 
     for group_value, group_df in merged_df.groupby(split_option):
 
-        output_data = {
-            "site_internal_id": group_df["site_internal_id"],
-            "report_PASS_full": group_df["Pass Email"],
-            "report_FAIL_full": group_df["Fail Email"],
-            "report_ABORT_full": group_df["Abort Email"]
-        }
+        # Split by country inside group
+        for country, sub_df in group_df.groupby("country"):
 
-        # Visit Info logic (UPDATED)
-        if visit_info_toggle:
-            output_data["visit_info"] = group_df["Visit Info"]
-        elif st.session_state.visit_info_text.strip() != "":
-            output_data["visit_info"] = st.session_state.visit_info_text
+            output_data = {
+                "site_internal_id": sub_df["site_internal_id"],
+                "report_PASS_full": sub_df["Pass Email"],
+                "report_FAIL_full": sub_df["Fail Email"],
+                "report_ABORT_full": sub_df["Abort Email"]
+            }
 
-        output_df = pd.DataFrame(output_data)
+            if visit_info_toggle:
+                output_data["visit_info"] = sub_df["Visit Info"]
+            elif st.session_state.visit_info_text.strip():
+                output_data["visit_info"] = st.session_state.visit_info_text
 
-        if output_df.empty:
-            continue
+            output_df = pd.DataFrame(output_data)
 
-        filename = f"import_{clean_filename(group_value)}_{client_name}.csv"
+            if output_df.empty:
+                continue
 
-        csv_buffer = io.StringIO()
-        output_df.to_csv(csv_buffer, index=False)
+            # Only add suffix if multiple countries exist in group
+            countries_in_group = group_df["country"].nunique()
 
-        files[filename] = csv_buffer.getvalue()
+            suffix = f"_{'UK' if country == 'GB' else 'IE'}" if countries_in_group > 1 else ""
 
-    if not files:
-        st.warning("No files were generated.")
-    else:
-        st.session_state.generated_files = files
+            filename = f"import_{clean_filename(group_value)}{suffix}_{client_name}.csv"
+
+            csv_buffer = io.StringIO()
+            output_df.to_csv(csv_buffer, index=False)
+
+            files[filename] = csv_buffer.getvalue()
+
+    st.session_state.generated_files = files
 
 # =========================
-# Output Section
+# Output
 # =========================
 
 if st.session_state.generated_files:
 
-    st.success(f"{len(st.session_state.generated_files)} import file(s) generated.")
-
     if download_zip:
         zip_buffer = io.BytesIO()
-
         with zipfile.ZipFile(zip_buffer, "w") as zf:
-            for filename, filedata in st.session_state.generated_files.items():
-                zf.writestr(filename, filedata)
+            for f, d in st.session_state.generated_files.items():
+                zf.writestr(f, d)
 
-        st.download_button(
-            label="Download All as ZIP",
-            data=zip_buffer.getvalue(),
-            file_name="revisit_imports.zip",
-            mime="application/zip"
-        )
+        st.download_button("Download ZIP", zip_buffer.getvalue(), "imports.zip")
     else:
-        st.subheader("Downloads")
-
-        for filename, filedata in st.session_state.generated_files.items():
-            st.download_button(
-                label=f"Download {filename}",
-                data=filedata,
-                file_name=filename,
-                mime="text/csv"
-            )
+        for f, d in st.session_state.generated_files.items():
+            st.download_button(f, d, f)
