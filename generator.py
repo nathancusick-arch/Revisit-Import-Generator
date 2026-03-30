@@ -103,14 +103,9 @@ result_filter = st.selectbox(
     ["Fails Only", "Aborts Only", "Fails and Aborts"]
 )
 
-# ---- Visit Info ----
+# ---- Visit Info (inside Settings) ----
 
-visit_info_toggle = st.toggle(
-    "Take Visit Info from Store DB",
-    key="visit_info_toggle"
-)
-
-if not visit_info_toggle:
+if not st.session_state.get("visit_info_toggle", False):
     st.session_state.visit_info_text = st.text_area(
         "Visit Info (Optional)",
         value=st.session_state.visit_info_text
@@ -124,9 +119,9 @@ else:
 """
     )
 
-st.markdown("")
-st.toggle(
+visit_info_toggle = st.toggle(
     "Take Visit Info from Store DB",
+    value=st.session_state.get("visit_info_toggle", False),
     key="visit_info_toggle"
 )
 
@@ -229,7 +224,7 @@ if st.button("Generate Imports"):
             "report_ABORT_full": group_df["Abort Email"]
         }
 
-        # Visit Info logic
+        # Visit Info logic (UPDATED)
         if visit_info_toggle:
             output_data["visit_info"] = group_df["Visit Info"]
         elif st.session_state.visit_info_text.strip() != "":
