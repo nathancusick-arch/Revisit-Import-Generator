@@ -22,7 +22,7 @@ if "visit_info_text" not in st.session_state:
 # Helpers
 # =========================
 
-eircode_pattern = re.compile(r"^[A-Z]\d{2}\s?[A-Z0-9]{4}$")
+eircode_pattern = re.compile(r"^[A-Z]\d(?:\d|[A-Z])\s?[A-Z0-9]{4}$")
 
 # ✅ Updated regex (BT now included)
 gb_postcode_pattern = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$")
