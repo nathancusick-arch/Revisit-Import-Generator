@@ -109,13 +109,9 @@ result_filter = st.selectbox(
 
 st.subheader("Visit Info")
 
-visit_info_input = st.text_area(
-    "Visit Info (Optional)",
-    key="visit_info_text"
-)
-
 visit_info_toggle = st.toggle("Take Visit Info from Store DB", value=False)
 
+# Show help OR textbox ABOVE toggle
 if visit_info_toggle:
     st.info(
         """
@@ -123,6 +119,11 @@ if visit_info_toggle:
 
 - Must include a column header named **Visit Info**
 """
+    )
+else:
+    st.session_state.visit_info_text = st.text_area(
+        "Visit Info (Optional)",
+        value=st.session_state.visit_info_text
     )
 
 # =========================
@@ -156,20 +157,14 @@ if st.button("Generate Imports"):
             st.error(f"Missing column in audit export: {col}")
             st.stop()
 
-    # =========================
     # Filter
-    # =========================
-
     audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
 
     if audit_df.empty:
         st.warning("No matching audits found based on selected filter.")
         st.stop()
 
-    # =========================
     # Exclusions
-    # =========================
-
     if revisit_df is not None:
         required_revisit_cols = ["site_internal_id", "item_to_order"]
 
@@ -194,10 +189,7 @@ if st.button("Generate Imports"):
         st.warning("No audits remaining after exclusions.")
         st.stop()
 
-    # =========================
     # Merge
-    # =========================
-
     merged_df = audit_df.merge(
         store_df,
         left_on="site_internal_id",
@@ -205,10 +197,7 @@ if st.button("Generate Imports"):
         how="left"
     )
 
-    # =========================
     # Validation
-    # =========================
-
     missing_sites = merged_df[merged_df["Site Internal ID"].isna()]["site_internal_id"].unique()
 
     if len(missing_sites) > 0:
@@ -224,10 +213,7 @@ if st.button("Generate Imports"):
         audit_df["client_name"].dropna().iloc[0]
     )
 
-    # =========================
     # Generate Files
-    # =========================
-
     files = {}
 
     for group_value, group_df in merged_df.groupby(split_option):
@@ -248,8 +234,7 @@ if st.button("Generate Imports"):
         if output_df.empty:
             continue
 
-        clean_group = clean_filename(group_value)
-        filename = f"import_{clean_group}_{client_name}.csv"
+        filename = f"import_{clean_filename(group_value)}_{client_name}.csv"
 
         csv_buffer = io.StringIO()
         output_df.to_csv(csv_buffer, index=False)
