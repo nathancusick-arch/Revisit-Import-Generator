@@ -17,9 +17,6 @@ if "generated_files" not in st.session_state:
 if "visit_info_text" not in st.session_state:
     st.session_state.visit_info_text = ""
 
-if "visit_info_toggle" not in st.session_state:
-    st.session_state.visit_info_toggle = False
-
 # =========================
 # Helpers
 # =========================
@@ -108,7 +105,12 @@ result_filter = st.selectbox(
 
 # ---- Visit Info ----
 
-if not st.session_state.visit_info_toggle:
+visit_info_toggle = st.toggle(
+    "Take Visit Info from Store DB",
+    key="visit_info_toggle"
+)
+
+if not visit_info_toggle:
     st.session_state.visit_info_text = st.text_area(
         "Visit Info (Optional)",
         value=st.session_state.visit_info_text
@@ -121,11 +123,6 @@ else:
 - Must include a column header named **Visit Info**
 """
     )
-
-st.session_state.visit_info_toggle = st.toggle(
-    "Take Visit Info from Store DB",
-    value=st.session_state.visit_info_toggle
-)
 
 # =========================
 # Generate Section
@@ -206,7 +203,7 @@ if st.button("Generate Imports"):
         st.write(list(missing_sites))
         st.stop()
 
-    if st.session_state.visit_info_toggle and "Visit Info" not in merged_df.columns:
+    if visit_info_toggle and "Visit Info" not in merged_df.columns:
         st.error("Store DB must include a 'Visit Info' column when toggle is enabled.")
         st.stop()
 
@@ -227,7 +224,7 @@ if st.button("Generate Imports"):
         }
 
         # Visit Info logic
-        if st.session_state.visit_info_toggle:
+        if visit_info_toggle:
             output_data["visit_info"] = group_df["Visit Info"]
         elif st.session_state.visit_info_text.strip() != "":
             output_data["visit_info"] = st.session_state.visit_info_text
