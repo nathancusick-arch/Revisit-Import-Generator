@@ -22,9 +22,10 @@ if "visit_info_text" not in st.session_state:
 # Helpers
 # =========================
 
+# ✅ Correct Eircode regex (supports both formats)
 eircode_pattern = re.compile(r"^[A-Z]\d(?:\d|[A-Z])\s?[A-Z0-9]{4}$")
 
-# ✅ Updated regex (BT now included)
+# ✅ UK regex (BT included)
 gb_postcode_pattern = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$")
 
 def classify_country(postcode: str) -> str:
@@ -44,27 +45,53 @@ def classify_country(postcode: str) -> str:
 def load_audit_file(file):
     return pd.read_csv(file)
 
-def load_store_file(file):
+def load_store_file(file, visit_info_required=False):
+    base_headers = ["Site Internal ID", "Pass Email", "Fail Email", "Abort Email"]
+    required_headers = base_headers + (["Visit Info"] if visit_info_required else [])
+
+    def extract_valid_sheet(raw_df):
+        for i in range(5):
+            row_values = raw_df.iloc[i].astype(str).tolist()
+
+            if all(header in row_values for header in required_headers):
+                df = raw_df.iloc[i+1:].copy()
+                df.columns = raw_df.iloc[i]
+                df = df.reset_index(drop=True)
+                return df
+
+        return None
+
+    # CSV
     if file.name.endswith(".csv"):
         raw_df = pd.read_csv(file, header=None)
+        df = extract_valid_sheet(raw_df)
+
+        if df is None:
+            raise ValueError(
+                f"Could not find required column headers in the first 5 rows: {required_headers}"
+            )
+
+        return df
+
+    # Excel (multi-sheet)
     else:
-        raw_df = pd.read_excel(file, header=None)
+        excel_file = pd.ExcelFile(file)
+        valid_dfs = []
 
-    required_headers = ["Site Internal ID", "Pass Email", "Fail Email", "Abort Email"]
+        for sheet_name in excel_file.sheet_names:
+            raw_df = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
 
-    for i in range(5):
-        row_values = raw_df.iloc[i].astype(str).tolist()
+            df = extract_valid_sheet(raw_df)
 
-        if all(header in row_values for header in required_headers):
-            df = raw_df.iloc[i+1:].copy()
-            df.columns = raw_df.iloc[i]
-            df = df.reset_index(drop=True)
-            return df
+            if df is not None:
+                valid_dfs.append(df)
 
-    raise ValueError(
-        "Could not find required column headers in the first 5 rows. "
-        "Ensure the file includes: Site Internal ID, Pass Email, Fail Email, Abort Email."
-    )
+        if not valid_dfs:
+            raise ValueError(
+                f"Could not find required column headers in any sheet: {required_headers}"
+            )
+
+        return pd.concat(valid_dfs, ignore_index=True)
 
 def load_revisit_file(file):
     return pd.read_csv(file)
@@ -163,7 +190,7 @@ if st.button("Generate Imports"):
 
     try:
         audit_df = load_audit_file(audit_file)
-        store_df = load_store_file(store_file)
+        store_df = load_store_file(store_file, visit_info_required=visit_info_toggle)
         revisit_df = load_revisit_file(revisit_file) if revisit_file else None
     except Exception as e:
         st.error(f"Error loading files: {e}")
@@ -202,10 +229,6 @@ if st.button("Generate Imports"):
         st.write(list(missing_sites))
         st.stop()
 
-    if visit_info_toggle and "Visit Info" not in merged_df.columns:
-        st.error("Store DB must include a 'Visit Info' column when toggle is enabled.")
-        st.stop()
-
     client_name = clean_filename(
         audit_df["client_name"].dropna().iloc[0]
     )
@@ -237,7 +260,6 @@ if st.button("Generate Imports"):
             if output_df.empty:
                 continue
 
-            # Filename suffix logic
             suffix = f"_{'UK' if country == 'GB' else 'IE'}" if countries_in_group > 1 else ""
 
             filename = f"import_{clean_filename(group_value)}{suffix}_{client_name}.csv"
