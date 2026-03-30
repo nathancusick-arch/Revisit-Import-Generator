@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Revisit Import Generator", layout="wide")
+st.set_page_config(page_title="Revisit Import Generator")
 
 st.title("Revisit Import Generator")
 
@@ -12,9 +12,6 @@ st.title("Revisit Import Generator")
 
 if "generated_files" not in st.session_state:
     st.session_state.generated_files = None
-
-if "file_summary" not in st.session_state:
-    st.session_state.file_summary = None
 
 # =========================
 # Helpers
@@ -40,14 +37,9 @@ def clean_filename(value):
 
 st.header("1. Upload Files")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    audit_file = st.file_uploader("Audit Export (.csv)", type=["csv"])
-    store_file = st.file_uploader("Store Database (.csv, .xlsx, .xlsm)", type=["csv", "xlsx", "xlsm"])
-
-with col2:
-    revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
+audit_file = st.file_uploader("Audit Export (.csv)", type=["csv"])
+store_file = st.file_uploader("Store Database (.csv, .xlsx, .xlsm)", type=["csv", "xlsx", "xlsm"])
+revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
 # =========================
 # Settings
@@ -55,16 +47,12 @@ with col2:
 
 st.header("2. Settings")
 
-col3, col4 = st.columns(2)
+split_option = st.selectbox(
+    "Split Imports By",
+    ["item_to_order", "order_internal_id"]
+)
 
-with col3:
-    split_option = st.selectbox(
-        "Split Imports By",
-        ["item_to_order", "order_internal_id"]
-    )
-
-with col4:
-    visit_info = st.text_area("Visit Info (Optional)")
+visit_info = st.text_area("Visit Info (Optional)")
 
 # =========================
 # Generate Section
@@ -76,7 +64,6 @@ if st.button("Generate Imports"):
 
     # Reset previous outputs
     st.session_state.generated_files = None
-    st.session_state.file_summary = None
 
     # Validate inputs
     if not audit_file or not store_file:
@@ -181,7 +168,6 @@ if st.button("Generate Imports"):
     # =========================
 
     files = {}
-    summary = []
 
     for group_value, group_df in merged_df.groupby(split_option):
 
@@ -203,13 +189,11 @@ if st.button("Generate Imports"):
         output_df.to_csv(csv_buffer, index=False)
 
         files[filename] = csv_buffer.getvalue()
-        summary.append((filename, len(output_df)))
 
     if not files:
         st.warning("No files were generated.")
     else:
         st.session_state.generated_files = files
-        st.session_state.file_summary = summary
 
 # =========================
 # Output Section (Persistent)
@@ -218,10 +202,6 @@ if st.button("Generate Imports"):
 if st.session_state.generated_files:
 
     st.success(f"{len(st.session_state.generated_files)} import file(s) generated.")
-
-    st.subheader("File Summary")
-    for filename, row_count in st.session_state.file_summary:
-        st.write(f"{filename} — {row_count} rows")
 
     st.subheader("Downloads")
 
