@@ -186,15 +186,26 @@ email_type = st.selectbox(
 
 # Visit Info
 
+# Ensure state exists
 if "visit_info_text" not in st.session_state:
     st.session_state.visit_info_text = ""
 
 if not st.session_state.get("visit_info_toggle", False):
-    st.text_area(
-        "Visit Info (Optional)",
-        key="visit_info_text",
-        height=68
-    )
+
+    visit_value = st.session_state.visit_info_text
+
+    if "\n" in visit_value:
+        st.session_state.visit_info_text = st.text_area(
+            "Visit Info (Optional)",
+            value=visit_value,
+            height=100
+        )
+    else:
+        st.session_state.visit_info_text = st.text_input(
+            "Visit Info (Optional)",
+            value=visit_value
+        )
+
 else:
     st.info(
         """
@@ -214,16 +225,28 @@ visit_info_toggle = st.toggle(
 # Tokens Section (FIXED UI)
 # =========================
 
+# Ensure state exists
 if "tokens_text" not in st.session_state:
     st.session_state.tokens_text = ""
 
 if not st.session_state.get("tokens_toggle", False):
-    st.text_area(
-        "Tokens (Optional)",
-        key="tokens_text",
-        height=68,
-        help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
-    )
+
+    tokens_value = st.session_state.tokens_text
+
+    if "\n" in tokens_value:
+        st.session_state.tokens_text = st.text_area(
+            "Tokens (Optional)",
+            value=tokens_value,
+            height=100,
+            help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
+        )
+    else:
+        st.session_state.tokens_text = st.text_input(
+            "Tokens (Optional)",
+            value=tokens_value,
+            help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
+        )
+
 else:
     st.info(
         """
@@ -235,6 +258,7 @@ else:
 
 tokens_toggle = st.toggle(
     "Take Tokens from Store DB",
+    value=st.session_state.get("tokens_toggle", False),
     key="tokens_toggle"
 )
 
