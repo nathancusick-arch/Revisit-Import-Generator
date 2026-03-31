@@ -207,16 +207,14 @@ visit_info_toggle = st.toggle(
 )
 
 # =========================
-# Tokens Section (NEW)
+# Tokens Section (FIXED UI)
 # =========================
-
-st.markdown("### Tokens (Optional)")
-st.caption("ℹ️ NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected.")
 
 if not st.session_state.get("tokens_toggle", False):
     st.session_state.tokens_text = st.text_area(
-        "",
-        value=st.session_state.tokens_text
+        "Tokens (Optional)",
+        value=st.session_state.tokens_text,
+        help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
     )
 else:
     st.info(
