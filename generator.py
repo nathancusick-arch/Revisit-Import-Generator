@@ -184,10 +184,10 @@ email_type = st.selectbox(
     key="email_type"
 )
 
-# Visit Info
+# Visit Info (CHANGED TO text_input)
 
 if not st.session_state.get("visit_info_toggle", False):
-    st.session_state.visit_info_text = st.text_area(
+    st.session_state.visit_info_text = st.text_input(
         "Visit Info (Optional)",
         value=st.session_state.visit_info_text
     )
@@ -206,12 +206,10 @@ visit_info_toggle = st.toggle(
     key="visit_info_toggle"
 )
 
-# =========================
-# Tokens Section (FIXED UI)
-# =========================
+# Tokens (CHANGED TO text_input)
 
 if not st.session_state.get("tokens_toggle", False):
-    st.session_state.tokens_text = st.text_area(
+    st.session_state.tokens_text = st.text_input(
         "Tokens (Optional)",
         value=st.session_state.tokens_text,
         help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
@@ -294,9 +292,7 @@ if st.button("Generate Imports"):
         st.write(list(missing))
         st.stop()
 
-    # =========================
-    # Tokens logic (EXTENDED)
-    # =========================
+    # Tokens logic unchanged
 
     if audit_type in ["NARV", "Media Compliance"]:
         col_map = {
@@ -323,7 +319,6 @@ if st.button("Generate Imports"):
     else:
         merged_df["base_tokens"] = ""
 
-    # NEW: extra tokens (user/store)
     if tokens_toggle:
         merged_df["extra_tokens"] = merged_df["Tokens"]
     else:
@@ -366,7 +361,6 @@ if st.button("Generate Imports"):
             elif st.session_state.visit_info_text.strip():
                 output_data["visit_info"] = st.session_state.visit_info_text
 
-            # UPDATED: include tokens if any exist OR audit type requires
             if audit_type != "SSL" or sub_df["tokens"].str.strip().any():
                 output_data["tokens"] = sub_df["tokens"]
 
