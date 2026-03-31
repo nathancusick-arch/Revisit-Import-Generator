@@ -186,17 +186,11 @@ email_type = st.selectbox(
 
 # Visit Info
 
-# Ensure state exists
-if "visit_info_text" not in st.session_state:
-    st.session_state.visit_info_text = ""
-
 if not st.session_state.get("visit_info_toggle", False):
-    visit_input = st.text_area(
+    st.session_state.visit_info_text = st.text_area(
         "Visit Info (Optional)",
-        value=st.session_state.visit_info_text,
-        height=68
+        value=st.session_state.visit_info_text
     )
-    st.session_state.visit_info_text = visit_input
 else:
     st.info(
         """
@@ -216,18 +210,12 @@ visit_info_toggle = st.toggle(
 # Tokens Section (FIXED UI)
 # =========================
 
-# Ensure state exists
-if "tokens_text" not in st.session_state:
-    st.session_state.tokens_text = ""
-
 if not st.session_state.get("tokens_toggle", False):
-    tokens_input = st.text_area(
+    st.session_state.tokens_text = st.text_area(
         "Tokens (Optional)",
         value=st.session_state.tokens_text,
-        height=68,
         help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
     )
-    st.session_state.tokens_text = tokens_input
 else:
     st.info(
         """
