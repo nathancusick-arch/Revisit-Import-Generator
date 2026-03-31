@@ -116,11 +116,11 @@ if email_type_for_help == "Full and Mini":
         """
 **Store DB requirements:**
 
-- Must include **Site Internal ID**
-- Must include:
-  - Pass Email Full, Fail Email Full, Abort Email Full
-  - Pass Email Mini, Fail Email Mini, Abort Email Mini
-- Headers must appear within the first 5 rows
+- Must include a column header named **Site Internal ID**
+- Must include column headers named:
+  - **Pass Email Full**, **Fail Email Full**, **Abort Email Full**
+  - **Pass Email Mini**, **Fail Email Mini**, **Abort Email Mini**
+- These headers can appear anywhere within the first 5 rows of the file (all sheets)
 """
     )
 else:
@@ -130,7 +130,7 @@ else:
 
 - Must include a column header named **Site Internal ID**
 - Must include column headers named **Pass Email**, **Fail Email**, and **Abort Email**
-- These headers can appear anywhere within the first 5 rows of the file
+- These headers can appear anywhere within the first 5 rows of the file (all sheets)
 """
     )
 
