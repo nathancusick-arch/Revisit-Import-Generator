@@ -74,7 +74,6 @@ def load_store_file(file, visit_info_required=False, email_type="Full"):
         if df is None:
             raise ValueError(f"Missing required headers: {required_headers}")
         return df
-
     else:
         excel_file = pd.ExcelFile(file)
         valid_dfs = []
@@ -144,6 +143,16 @@ else:
 
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
+# ✅ FIXED LOCATION: Tokens upload now here
+
+audit_type = st.session_state.get("audit_type", "SSL")
+
+tokens_file = None
+if audit_type in ["NARV", "Media Compliance"]:
+    tokens_file = st.file_uploader("Upload 'NARV and MC Patches.xlsx'", type=["xlsx"])
+elif audit_type == "Deliveries (WIP)":
+    tokens_file = st.file_uploader("Upload 'Rapid Delivery Tokens August 25.xlsx'", type=["xlsx"])
+
 # =========================
 # Settings
 # =========================
@@ -152,7 +161,8 @@ st.header("2. Settings")
 
 audit_type = st.selectbox(
     "Audit Type",
-    ["SSL", "NARV", "Media Compliance", "Deliveries"]
+    ["SSL", "NARV", "Media Compliance", "Deliveries (WIP)"],
+    key="audit_type"
 )
 
 split_option = st.selectbox(
@@ -192,14 +202,6 @@ visit_info_toggle = st.toggle(
     value=st.session_state.get("visit_info_toggle", False),
     key="visit_info_toggle"
 )
-
-# Tokens upload
-
-tokens_file = None
-if audit_type in ["NARV", "Media Compliance"]:
-    tokens_file = st.file_uploader("Upload 'NARV and MC Patches.xlsx'", type=["xlsx"])
-elif audit_type == "Deliveries":
-    tokens_file = st.file_uploader("Upload 'Rapid Delivery Tokens August 25.xlsx'", type=["xlsx"])
 
 # =========================
 # Generate Section
@@ -287,7 +289,7 @@ if st.button("Generate Imports"):
 
         merged_df["tokens"] = merged_df.apply(assign_token, axis=1)
 
-    elif audit_type == "Deliveries":
+    elif audit_type == "Deliveries (WIP)":
         merged_df["tokens"] = ""
 
     client_name = clean_filename(audit_df["client_name"].dropna().iloc[0])
