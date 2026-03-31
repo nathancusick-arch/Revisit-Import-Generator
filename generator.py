@@ -190,7 +190,7 @@ if not st.session_state.get("visit_info_toggle", False):
     st.session_state.visit_info_text = st.text_area(
         "Visit Info (Optional)",
         value=st.session_state.visit_info_text,
-        height=68
+        height=40
     )
 else:
     st.info(
@@ -215,7 +215,7 @@ if not st.session_state.get("tokens_toggle", False):
     st.session_state.tokens_text = st.text_area(
         "Tokens (Optional)",
         value=st.session_state.tokens_text,
-        height=68,
+        height=40,
         help="NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected."
     )
 else:
