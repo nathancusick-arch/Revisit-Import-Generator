@@ -5,11 +5,10 @@ import zipfile
 import re
 
 st.set_page_config(page_title="Revisit Import Generator")
-
 st.title("Revisit Import Generator")
 
 # =========================
-# Session State Init
+# Session State
 # =========================
 
 if "generated_files" not in st.session_state:
@@ -19,11 +18,15 @@ if "visit_info_text" not in st.session_state:
     st.session_state.visit_info_text = ""
 
 # =========================
-# Helpers
+# Regex
 # =========================
 
 eircode_pattern = re.compile(r"^[A-Z]\d(?:\d|[A-Z])\s?[A-Z0-9]{4}$")
 gb_postcode_pattern = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$")
+
+# =========================
+# Helpers
+# =========================
 
 def classify_country(postcode: str) -> str:
     if not postcode or str(postcode).strip() == "":
@@ -35,11 +38,14 @@ def classify_country(postcode: str) -> str:
         return "GB"
     return "GB"
 
+def get_pc_prefix(pc):
+    return str(pc).strip().upper().replace(" ", "")[:2]
+
 def load_audit_file(file):
     return pd.read_csv(file)
 
 def load_store_file(file, visit_info_required=False, email_type="Full"):
-    
+
     if email_type == "Full and Mini":
         email_headers = [
             "Pass Email Full", "Fail Email Full", "Abort Email Full",
@@ -87,6 +93,9 @@ def load_store_file(file, visit_info_required=False, email_type="Full"):
 def load_revisit_file(file):
     return pd.read_csv(file)
 
+def load_tokens_file(file):
+    return pd.read_excel(file, sheet_name="Overall")
+
 def normalise_result(series, mode):
     s = series.astype(str).str.lower()
     if mode == "Fails Only":
@@ -108,7 +117,6 @@ st.header("1. Upload Files")
 audit_file = st.file_uploader("Audit Export", type=["csv"])
 store_file = st.file_uploader("Store Database", type=["csv", "xlsx", "xlsm"])
 
-# Help text changes dynamically
 email_type_for_help = st.session_state.get("email_type", "Full")
 
 if email_type_for_help == "Full and Mini":
@@ -142,9 +150,20 @@ revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
 st.header("2. Settings")
 
-split_option = st.selectbox("Split Imports By", ["item_to_order", "order_internal_id"])
+audit_type = st.selectbox(
+    "Audit Type",
+    ["SSL", "NARV", "Media Compliance", "Deliveries"]
+)
 
-result_filter = st.selectbox("Revisits For", ["Fails Only", "Aborts Only", "Fails and Aborts"])
+split_option = st.selectbox(
+    "Split Imports By",
+    ["item_to_order", "order_internal_id"]
+)
+
+result_filter = st.selectbox(
+    "Revisits For",
+    ["Fails Only", "Aborts Only", "Fails and Aborts"]
+)
 
 email_type = st.selectbox(
     "Email Type",
@@ -174,8 +193,16 @@ visit_info_toggle = st.toggle(
     key="visit_info_toggle"
 )
 
+# Tokens upload
+
+tokens_file = None
+if audit_type in ["NARV", "Media Compliance"]:
+    tokens_file = st.file_uploader("Upload 'NARV and MC Patches.xlsx'", type=["xlsx"])
+elif audit_type == "Deliveries":
+    tokens_file = st.file_uploader("Upload 'Rapid Delivery Tokens August 25.xlsx'", type=["xlsx"])
+
 # =========================
-# Generate
+# Generate Section
 # =========================
 
 st.header("3. Generate")
@@ -187,7 +214,11 @@ if st.button("Generate Imports"):
     st.session_state.generated_files = None
 
     if not audit_file or not store_file:
-        st.error("Upload required files.")
+        st.error("Please upload required files.")
+        st.stop()
+
+    if audit_type != "SSL" and not tokens_file:
+        st.error("Please upload the required tokens file.")
         st.stop()
 
     try:
@@ -198,6 +229,7 @@ if st.button("Generate Imports"):
             email_type=email_type
         )
         revisit_df = load_revisit_file(revisit_file) if revisit_file else None
+        tokens_df = load_tokens_file(tokens_file) if tokens_file else None
     except Exception as e:
         st.error(str(e))
         st.stop()
@@ -231,6 +263,33 @@ if st.button("Generate Imports"):
         st.write(list(missing))
         st.stop()
 
+    # =========================
+    # Tokens logic
+    # =========================
+
+    if audit_type in ["NARV", "Media Compliance"]:
+        col_map = {
+            "NARV": "Region NARV",
+            "Media Compliance": "MC Region"
+        }
+
+        lookup_col = col_map[audit_type]
+
+        tokens_lookup = dict(
+            zip(tokens_df["PC"].astype(str).str.upper(), tokens_df[lookup_col])
+        )
+
+        def assign_token(row):
+            if row["country"] == "IE":
+                return "NARV Ireland" if audit_type == "NARV" else "MC Ireland"
+            prefix = get_pc_prefix(row["site_post_code"])
+            return tokens_lookup.get(prefix, "")
+
+        merged_df["tokens"] = merged_df.apply(assign_token, axis=1)
+
+    elif audit_type == "Deliveries":
+        merged_df["tokens"] = ""
+
     client_name = clean_filename(audit_df["client_name"].dropna().iloc[0])
 
     total_split_groups = merged_df[split_option].nunique()
@@ -241,19 +300,15 @@ if st.button("Generate Imports"):
     for group_value, group_df in merged_df.groupby(split_option):
         for country, sub_df in group_df.groupby("country"):
 
-            output_data = {"site_internal_id": sub_df["site_internal_id"]}
+            output_data = {
+                "site_internal_id": sub_df["site_internal_id"]
+            }
 
             if email_type in ["Full", "Mini"]:
-                col_map = {
-                    "Full": "full",
-                    "Mini": "mini"
-                }
-                suffix = col_map[email_type]
-
+                suffix = "full" if email_type == "Full" else "mini"
                 output_data[f"report_PASS_{suffix}"] = sub_df["Pass Email"]
                 output_data[f"report_FAIL_{suffix}"] = sub_df["Fail Email"]
                 output_data[f"report_ABORT_{suffix}"] = sub_df["Abort Email"]
-
             else:
                 output_data["report_PASS_full"] = sub_df["Pass Email Full"]
                 output_data["report_FAIL_full"] = sub_df["Fail Email Full"]
@@ -266,6 +321,9 @@ if st.button("Generate Imports"):
                 output_data["visit_info"] = sub_df["Visit Info"]
             elif st.session_state.visit_info_text.strip():
                 output_data["visit_info"] = st.session_state.visit_info_text
+
+            if audit_type != "SSL":
+                output_data["tokens"] = sub_df["tokens"]
 
             output_df = pd.DataFrame(output_data)
 
@@ -300,7 +358,7 @@ if st.button("Generate Imports"):
         st.session_state.generated_files = files
 
 # =========================
-# Output
+# Output Section
 # =========================
 
 if st.session_state.generated_files:
