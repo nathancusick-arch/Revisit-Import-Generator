@@ -22,70 +22,65 @@ if "visit_info_text" not in st.session_state:
 # Helpers
 # =========================
 
-# Eircode regex (supports both formats)
 eircode_pattern = re.compile(r"^[A-Z]\d(?:\d|[A-Z])\s?[A-Z0-9]{4}$")
-
-# UK postcode regex (BT included)
 gb_postcode_pattern = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$")
 
 def classify_country(postcode: str) -> str:
     if not postcode or str(postcode).strip() == "":
         return "GB"
-
     pc = str(postcode).strip().upper().replace("  ", " ")
-
     if eircode_pattern.match(pc):
         return "IE"
-
     if gb_postcode_pattern.match(pc):
         return "GB"
-
     return "GB"
 
 def load_audit_file(file):
     return pd.read_csv(file)
 
-def load_store_file(file, visit_info_required=False):
-    base_headers = ["Site Internal ID", "Pass Email", "Fail Email", "Abort Email"]
-    required_headers = base_headers + (["Visit Info"] if visit_info_required else [])
+def load_store_file(file, visit_info_required=False, email_type="Full"):
+    
+    if email_type == "Full and Mini":
+        email_headers = [
+            "Pass Email Full", "Fail Email Full", "Abort Email Full",
+            "Pass Email Mini", "Fail Email Mini", "Abort Email Mini"
+        ]
+    else:
+        email_headers = ["Pass Email", "Fail Email", "Abort Email"]
+
+    required_headers = ["Site Internal ID"] + email_headers + (
+        ["Visit Info"] if visit_info_required else []
+    )
 
     def extract_valid_sheet(raw_df):
         for i in range(5):
             row_values = raw_df.iloc[i].astype(str).tolist()
-
             if all(header in row_values for header in required_headers):
                 df = raw_df.iloc[i+1:].copy()
                 df.columns = raw_df.iloc[i]
                 df = df.reset_index(drop=True)
                 return df
-
         return None
 
     if file.name.endswith(".csv"):
         raw_df = pd.read_csv(file, header=None)
         df = extract_valid_sheet(raw_df)
-
         if df is None:
-            raise ValueError(
-                f"Could not find required column headers in the first 5 rows: {required_headers}"
-            )
-
+            raise ValueError(f"Missing required headers: {required_headers}")
         return df
+
     else:
         excel_file = pd.ExcelFile(file)
         valid_dfs = []
 
-        for sheet_name in excel_file.sheet_names:
-            raw_df = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+        for sheet in excel_file.sheet_names:
+            raw_df = pd.read_excel(excel_file, sheet_name=sheet, header=None)
             df = extract_valid_sheet(raw_df)
-
             if df is not None:
                 valid_dfs.append(df)
 
         if not valid_dfs:
-            raise ValueError(
-                f"Could not find required column headers in any sheet: {required_headers}"
-            )
+            raise ValueError(f"Missing required headers in all sheets: {required_headers}")
 
         return pd.concat(valid_dfs, ignore_index=True)
 
@@ -94,7 +89,6 @@ def load_revisit_file(file):
 
 def normalise_result(series, mode):
     s = series.astype(str).str.lower()
-
     if mode == "Fails Only":
         return s.str.contains("fail", na=False)
     elif mode == "Aborts Only":
@@ -112,18 +106,33 @@ def clean_filename(value):
 st.header("1. Upload Files")
 
 audit_file = st.file_uploader("Audit Export", type=["csv"])
-
 store_file = st.file_uploader("Store Database", type=["csv", "xlsx", "xlsm"])
 
-st.info(
-    """
+# Help text changes dynamically
+email_type_for_help = st.session_state.get("email_type", "Full")
+
+if email_type_for_help == "Full and Mini":
+    st.info(
+        """
+**Store DB requirements:**
+
+- Must include **Site Internal ID**
+- Must include:
+  - Pass Email Full, Fail Email Full, Abort Email Full
+  - Pass Email Mini, Fail Email Mini, Abort Email Mini
+- Headers must appear within the first 5 rows
+"""
+    )
+else:
+    st.info(
+        """
 **Store DB requirements:**
 
 - Must include a column header named **Site Internal ID**
 - Must include column headers named **Pass Email**, **Fail Email**, and **Abort Email**
 - These headers can appear anywhere within the first 5 rows of the file
 """
-)
+    )
 
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
@@ -133,14 +142,14 @@ revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
 st.header("2. Settings")
 
-split_option = st.selectbox(
-    "Split Imports By",
-    ["item_to_order", "order_internal_id"]
-)
+split_option = st.selectbox("Split Imports By", ["item_to_order", "order_internal_id"])
 
-result_filter = st.selectbox(
-    "Revisits For",
-    ["Fails Only", "Aborts Only", "Fails and Aborts"]
+result_filter = st.selectbox("Revisits For", ["Fails Only", "Aborts Only", "Fails and Aborts"])
+
+email_type = st.selectbox(
+    "Email Type",
+    ["Full", "Mini", "Full and Mini"],
+    key="email_type"
 )
 
 # Visit Info
@@ -166,7 +175,7 @@ visit_info_toggle = st.toggle(
 )
 
 # =========================
-# Generate Section
+# Generate
 # =========================
 
 st.header("3. Generate")
@@ -178,15 +187,19 @@ if st.button("Generate Imports"):
     st.session_state.generated_files = None
 
     if not audit_file or not store_file:
-        st.error("Please upload both Audit Export and Store Database.")
+        st.error("Upload required files.")
         st.stop()
 
     try:
         audit_df = load_audit_file(audit_file)
-        store_df = load_store_file(store_file, visit_info_required=visit_info_toggle)
+        store_df = load_store_file(
+            store_file,
+            visit_info_required=visit_info_toggle,
+            email_type=email_type
+        )
         revisit_df = load_revisit_file(revisit_file) if revisit_file else None
     except Exception as e:
-        st.error(f"Error loading files: {e}")
+        st.error(str(e))
         st.stop()
 
     required_cols = ["site_internal_id", "primary_result", split_option, "client_name", "site_post_code"]
@@ -196,17 +209,14 @@ if st.button("Generate Imports"):
             st.error(f"Missing column: {col}")
             st.stop()
 
-    # Filter
     audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
 
     if audit_df.empty:
-        st.warning("No matching audits found.")
+        st.warning("No matching audits.")
         st.stop()
 
-    # Country classification
     audit_df["country"] = audit_df["site_post_code"].apply(classify_country)
 
-    # Merge
     merged_df = audit_df.merge(
         store_df,
         left_on="site_internal_id",
@@ -214,35 +224,43 @@ if st.button("Generate Imports"):
         how="left"
     )
 
-    # Validation
-    missing_sites = merged_df[merged_df["Site Internal ID"].isna()]["site_internal_id"].unique()
+    missing = merged_df[merged_df["Site Internal ID"].isna()]["site_internal_id"].unique()
 
-    if len(missing_sites) > 0:
+    if len(missing) > 0:
         st.error("Missing site IDs in Store DB:")
-        st.write(list(missing_sites))
+        st.write(list(missing))
         st.stop()
 
-    client_name = clean_filename(
-        audit_df["client_name"].dropna().iloc[0]
-    )
+    client_name = clean_filename(audit_df["client_name"].dropna().iloc[0])
 
-    # Determine global splits
     total_split_groups = merged_df[split_option].nunique()
     total_countries = merged_df["country"].nunique()
 
-    # Generate files
     files = {}
 
     for group_value, group_df in merged_df.groupby(split_option):
-
         for country, sub_df in group_df.groupby("country"):
 
-            output_data = {
-                "site_internal_id": sub_df["site_internal_id"],
-                "report_PASS_full": sub_df["Pass Email"],
-                "report_FAIL_full": sub_df["Fail Email"],
-                "report_ABORT_full": sub_df["Abort Email"]
-            }
+            output_data = {"site_internal_id": sub_df["site_internal_id"]}
+
+            if email_type in ["Full", "Mini"]:
+                col_map = {
+                    "Full": "full",
+                    "Mini": "mini"
+                }
+                suffix = col_map[email_type]
+
+                output_data[f"report_PASS_{suffix}"] = sub_df["Pass Email"]
+                output_data[f"report_FAIL_{suffix}"] = sub_df["Fail Email"]
+                output_data[f"report_ABORT_{suffix}"] = sub_df["Abort Email"]
+
+            else:
+                output_data["report_PASS_full"] = sub_df["Pass Email Full"]
+                output_data["report_FAIL_full"] = sub_df["Fail Email Full"]
+                output_data["report_ABORT_full"] = sub_df["Abort Email Full"]
+                output_data["report_PASS_mini"] = sub_df["Pass Email Mini"]
+                output_data["report_FAIL_mini"] = sub_df["Fail Email Mini"]
+                output_data["report_ABORT_mini"] = sub_df["Abort Email Mini"]
 
             if visit_info_toggle:
                 output_data["visit_info"] = sub_df["Visit Info"]
@@ -259,22 +277,22 @@ if st.button("Generate Imports"):
             include_split = total_split_groups > 1
             include_country = total_countries > 1
 
-            name_parts = ["import"]
+            parts = ["import"]
 
             if include_split:
-                name_parts.append(clean_filename(group_value))
+                parts.append(clean_filename(group_value))
 
             if include_country:
-                name_parts.append(country_label)
+                parts.append(country_label)
 
-            name_parts.append(client_name)
+            parts.append(client_name)
 
-            filename = "_".join(name_parts) + ".csv"
+            filename = "_".join(parts) + ".csv"
 
-            csv_buffer = io.StringIO()
-            output_df.to_csv(csv_buffer, index=False)
+            buffer = io.StringIO()
+            output_df.to_csv(buffer, index=False)
 
-            files[filename] = csv_buffer.getvalue()
+            files[filename] = buffer.getvalue()
 
     if not files:
         st.warning("No files generated.")
@@ -282,7 +300,7 @@ if st.button("Generate Imports"):
         st.session_state.generated_files = files
 
 # =========================
-# Output Section
+# Output
 # =========================
 
 if st.session_state.generated_files:
@@ -291,20 +309,12 @@ if st.session_state.generated_files:
 
     if download_zip:
         zip_buffer = io.BytesIO()
-
         with zipfile.ZipFile(zip_buffer, "w") as zf:
-            for filename, data in st.session_state.generated_files.items():
-                zf.writestr(filename, data)
+            for name, data in st.session_state.generated_files.items():
+                zf.writestr(name, data)
 
-        st.download_button(
-            "Download All as ZIP",
-            zip_buffer.getvalue(),
-            "revisit_imports.zip"
-        )
+        st.download_button("Download All as ZIP", zip_buffer.getvalue(), "revisit_imports.zip")
+
     else:
-        for filename, data in st.session_state.generated_files.items():
-            st.download_button(
-                f"Download {filename}",
-                data,
-                filename
-            )
+        for name, data in st.session_state.generated_files.items():
+            st.download_button(f"Download {name}", data, name)
