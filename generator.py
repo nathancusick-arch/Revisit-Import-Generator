@@ -17,6 +17,9 @@ if "generated_files" not in st.session_state:
 if "visit_info_text" not in st.session_state:
     st.session_state.visit_info_text = ""
 
+if "tokens_text" not in st.session_state:
+    st.session_state.tokens_text = ""
+
 # =========================
 # Regex
 # =========================
@@ -44,7 +47,7 @@ def get_pc_prefix(pc):
 def load_audit_file(file):
     return pd.read_csv(file)
 
-def load_store_file(file, visit_info_required=False, email_type="Full"):
+def load_store_file(file, visit_info_required=False, email_type="Full", tokens_required=False):
 
     if email_type == "Full and Mini":
         email_headers = [
@@ -56,6 +59,8 @@ def load_store_file(file, visit_info_required=False, email_type="Full"):
 
     required_headers = ["Site Internal ID"] + email_headers + (
         ["Visit Info"] if visit_info_required else []
+    ) + (
+        ["Tokens"] if tokens_required else []
     )
 
     def extract_valid_sheet(raw_df):
@@ -143,8 +148,6 @@ else:
 
 revisit_file = st.file_uploader("Existing Revisits (Optional)", type=["csv"])
 
-# ✅ FIXED LOCATION: Tokens upload now here
-
 audit_type = st.session_state.get("audit_type", "SSL")
 
 tokens_file = None
@@ -204,6 +207,33 @@ visit_info_toggle = st.toggle(
 )
 
 # =========================
+# Tokens Section (NEW)
+# =========================
+
+st.markdown("### Tokens (Optional)")
+st.caption("ℹ️ NARV / MC / Deliveries tokens not required here as long as the correct audit type is selected.")
+
+if not st.session_state.get("tokens_toggle", False):
+    st.session_state.tokens_text = st.text_area(
+        "",
+        value=st.session_state.tokens_text
+    )
+else:
+    st.info(
+        """
+**Store DB requirement for Tokens:**
+
+- Must include a column header named **Tokens**
+"""
+    )
+
+tokens_toggle = st.toggle(
+    "Take Tokens from Store DB",
+    value=st.session_state.get("tokens_toggle", False),
+    key="tokens_toggle"
+)
+
+# =========================
 # Generate Section
 # =========================
 
@@ -228,7 +258,8 @@ if st.button("Generate Imports"):
         store_df = load_store_file(
             store_file,
             visit_info_required=visit_info_toggle,
-            email_type=email_type
+            email_type=email_type,
+            tokens_required=tokens_toggle
         )
         revisit_df = load_revisit_file(revisit_file) if revisit_file else None
         tokens_df = load_tokens_file(tokens_file) if tokens_file else None
@@ -266,7 +297,7 @@ if st.button("Generate Imports"):
         st.stop()
 
     # =========================
-    # Tokens logic
+    # Tokens logic (EXTENDED)
     # =========================
 
     if audit_type in ["NARV", "Media Compliance"]:
@@ -287,10 +318,23 @@ if st.button("Generate Imports"):
             prefix = get_pc_prefix(row["site_post_code"])
             return tokens_lookup.get(prefix, "")
 
-        merged_df["tokens"] = merged_df.apply(assign_token, axis=1)
+        merged_df["base_tokens"] = merged_df.apply(assign_token, axis=1)
 
     elif audit_type == "Deliveries (WIP)":
-        merged_df["tokens"] = ""
+        merged_df["base_tokens"] = ""
+    else:
+        merged_df["base_tokens"] = ""
+
+    # NEW: extra tokens (user/store)
+    if tokens_toggle:
+        merged_df["extra_tokens"] = merged_df["Tokens"]
+    else:
+        merged_df["extra_tokens"] = st.session_state.tokens_text
+
+    merged_df["tokens"] = merged_df.apply(
+        lambda r: ", ".join([t for t in [r["base_tokens"], r["extra_tokens"]] if str(t).strip() != ""]),
+        axis=1
+    )
 
     client_name = clean_filename(audit_df["client_name"].dropna().iloc[0])
 
@@ -324,7 +368,8 @@ if st.button("Generate Imports"):
             elif st.session_state.visit_info_text.strip():
                 output_data["visit_info"] = st.session_state.visit_info_text
 
-            if audit_type != "SSL":
+            # UPDATED: include tokens if any exist OR audit type requires
+            if audit_type != "SSL" or sub_df["tokens"].str.strip().any():
                 output_data["tokens"] = sub_df["tokens"]
 
             output_df = pd.DataFrame(output_data)
