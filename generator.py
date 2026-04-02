@@ -69,7 +69,7 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
             if all(header in row_values for header in required_headers):
                 df = raw_df.iloc[i+1:].copy()
                 df.columns = raw_df.iloc[i]
-                df = df.loc[:, ~df.columns.duplicated()]
+                df.columns = pd.io.parsers.ParserBase({'names': df.columns})._maybe_dedup_names(df.columns)
                 df = df.reset_index(drop=True)
                 return df
         return None
@@ -261,7 +261,9 @@ if st.button("Generate Imports"):
         revisit_df = load_revisit_file(revisit_file) if revisit_file else None
         tokens_df = load_tokens_file(tokens_file) if tokens_file else None
     except Exception as e:
-        st.error(str(e))
+        import traceback
+        st.error("An error occurred:")
+        st.text(traceback.format_exc())
         st.stop()
 
     required_cols = ["site_internal_id", "primary_result", split_option, "client_name", "site_post_code"]
