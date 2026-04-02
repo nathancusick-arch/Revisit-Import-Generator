@@ -201,7 +201,7 @@ email_type = st.selectbox(
     key="email_type"
 )
 
-# Visit Info (CHANGED TO text_input)
+# Visit Info
 
 if not st.session_state.get("visit_info_toggle", False):
     st.session_state.visit_info_text = st.text_input(
@@ -223,7 +223,7 @@ visit_info_toggle = st.toggle(
     key="visit_info_toggle"
 )
 
-# Tokens (CHANGED TO text_input)
+# Tokens
 
 if not st.session_state.get("tokens_toggle", False):
     st.session_state.tokens_text = st.text_input(
@@ -290,6 +290,41 @@ if st.button("Generate Imports"):
             st.stop()
 
     audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
+
+    # =========================
+    # Exclusions (REINSERTED)
+    # =========================
+
+    if revisit_df is not None:
+
+        required_revisit_cols = ["site_internal_id", "item_to_order"]
+
+        for col in required_revisit_cols:
+            if col not in revisit_df.columns:
+                st.error(f"Missing column in revisits file: {col}")
+                st.stop()
+
+        revisit_df["site_internal_id"] = revisit_df["site_internal_id"].astype(str)
+        revisit_df["item_to_order"] = revisit_df["item_to_order"].astype(str)
+
+        audit_df["site_internal_id"] = audit_df["site_internal_id"].astype(str)
+        audit_df["item_to_order"] = audit_df["item_to_order"].astype(str)
+
+        revisit_keys = set(zip(
+            revisit_df["site_internal_id"],
+            revisit_df["item_to_order"]
+        ))
+
+        audit_df = audit_df[
+            ~audit_df.apply(
+                lambda row: (row["site_internal_id"], row["item_to_order"]) in revisit_keys,
+                axis=1
+            )
+        ]
+
+        if audit_df.empty:
+            st.warning("No audits remaining after exclusions.")
+            st.stop()
 
     if audit_df.empty:
         st.warning("No matching audits.")
