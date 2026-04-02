@@ -47,6 +47,22 @@ def get_pc_prefix(pc):
 def load_audit_file(file):
     return pd.read_csv(file)
 
+def make_unique_columns(columns):
+    seen = {}
+    new_cols = []
+
+    for col in columns:
+        col_str = str(col)
+
+        if col_str not in seen:
+            seen[col_str] = 0
+            new_cols.append(col_str)
+        else:
+            seen[col_str] += 1
+            new_cols.append(f"{col_str}_{seen[col_str]}")
+
+    return new_cols
+
 def load_store_file(file, visit_info_required=False, email_type="Full", tokens_required=False):
 
     if email_type == "Full and Mini":
@@ -69,7 +85,7 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
             if all(header in row_values for header in required_headers):
                 df = raw_df.iloc[i+1:].copy()
                 df.columns = raw_df.iloc[i]
-                df.columns = pd.io.parsers.ParserBase({'names': df.columns})._maybe_dedup_names(df.columns)
+                df.columns = make_unique_columns(df.columns)
                 df = df.reset_index(drop=True)
                 return df
         return None
