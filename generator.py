@@ -69,6 +69,7 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
             if all(header in row_values for header in required_headers):
                 df = raw_df.iloc[i+1:].copy()
                 df.columns = raw_df.iloc[i]
+                df = df.loc[:, ~df.columns.duplicated()]
                 df = df.reset_index(drop=True)
                 return df
         return None
