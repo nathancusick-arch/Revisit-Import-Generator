@@ -290,7 +290,9 @@ if st.button("Generate Imports"):
             st.stop()
 
     audit_df = audit_df[normalise_result(audit_df["primary_result"], result_filter)]
-
+    
+    original_split_groups = audit_df[split_option].nunique()
+    
     # =========================
     # Exclusions (REINSERTED)
     # =========================
@@ -385,7 +387,7 @@ if st.button("Generate Imports"):
 
     client_name = clean_filename(audit_df["client_name"].dropna().iloc[0])
 
-    total_split_groups = merged_df[split_option].nunique()
+    total_split_groups = original_split_groups
     total_countries = merged_df["country"].nunique()
 
     files = {}
