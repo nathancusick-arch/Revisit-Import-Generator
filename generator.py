@@ -201,6 +201,20 @@ email_type = st.selectbox(
     key="email_type"
 )
 
+# Optional Dates
+
+start_date = st.date_input(
+    "Start Date (Optional)",
+    value=None,
+    format="DD/MM/YYYY"
+)
+
+end_date = st.date_input(
+    "End Date (Optional)",
+    value=None,
+    format="DD/MM/YYYY"
+)
+
 # Visit Info
 
 if not st.session_state.get("visit_info_toggle", False):
@@ -264,6 +278,10 @@ if st.button("Generate Imports"):
 
     if audit_type != "SSL" and not tokens_file:
         st.error("Please upload the required tokens file.")
+        st.stop()
+
+    if start_date and end_date and end_date < start_date:
+        st.error("End Date must be on or after Start Date.")
         st.stop()
 
     try:
@@ -399,6 +417,17 @@ if st.button("Generate Imports"):
                 "site_internal_id": sub_df["site_internal_id"]
             }
 
+            if visit_info_toggle:
+                output_data["visit_info"] = sub_df["Visit Info"]
+            elif st.session_state.visit_info_text.strip():
+                output_data["visit_info"] = st.session_state.visit_info_text
+
+            if start_date is not None:
+                output_data["start_date"] = start_date.strftime("%d/%m/%Y")
+
+            if end_date is not None:
+                output_data["end_date"] = end_date.strftime("%d/%m/%Y")
+
             if email_type in ["Full", "Mini"]:
                 suffix = "full" if email_type == "Full" else "mini"
                 output_data[f"report_PASS_{suffix}"] = sub_df["Pass Email"]
@@ -411,11 +440,6 @@ if st.button("Generate Imports"):
                 output_data["report_PASS_mini"] = sub_df["Pass Email Mini"]
                 output_data["report_FAIL_mini"] = sub_df["Fail Email Mini"]
                 output_data["report_ABORT_mini"] = sub_df["Abort Email Mini"]
-
-            if visit_info_toggle:
-                output_data["visit_info"] = sub_df["Visit Info"]
-            elif st.session_state.visit_info_text.strip():
-                output_data["visit_info"] = st.session_state.visit_info_text
 
             if audit_type != "SSL" or sub_df["tokens"].str.strip().any():
                 output_data["tokens"] = sub_df["tokens"]
