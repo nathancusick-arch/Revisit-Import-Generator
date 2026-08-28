@@ -80,7 +80,9 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
     )
 
     def extract_valid_sheet(raw_df):
-        for i in range(5):
+        # Some workbooks contain short helper/control sheets. Only inspect rows
+        # that actually exist so those sheets can be skipped safely.
+        for i in range(min(5, len(raw_df))):
             row_values = raw_df.iloc[i].astype(str).tolist()
             if all(header in row_values for header in required_headers):
                 df = raw_df.iloc[i+1:].copy()
