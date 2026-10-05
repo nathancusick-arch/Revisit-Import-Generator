@@ -51,6 +51,7 @@ def get_pc_prefix(pc):
 
 def load_audit_file(file):
     try:
+        file.seek(0)
         return pd.read_csv(file)
     except UnicodeDecodeError as exc:
         raise UserFacingError(
@@ -162,6 +163,7 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
 
     if file.name.lower().endswith(".csv"):
         try:
+            file.seek(0)
             raw_df = pd.read_csv(file, header=None)
         except UnicodeDecodeError as exc:
             raise UserFacingError(
@@ -187,6 +189,7 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
         return df
 
     try:
+        file.seek(0)
         excel_file = pd.ExcelFile(file)
     except Exception as exc:
         raise UserFacingError(
@@ -236,6 +239,7 @@ def load_store_file(file, visit_info_required=False, email_type="Full", tokens_r
 
 def load_revisit_file(file):
     try:
+        file.seek(0)
         return pd.read_csv(file)
     except UnicodeDecodeError as exc:
         raise UserFacingError(
@@ -254,6 +258,7 @@ def load_revisit_file(file):
 
 def load_tokens_file(file, audit_type):
     try:
+        file.seek(0)
         excel_file = pd.ExcelFile(file)
     except Exception as exc:
         raise UserFacingError(
